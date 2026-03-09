@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "160923671387",
+    "project_id": "safaripass-production-b6be3",
+    "storage_bucket": "safaripass-production-b6be3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:160923671387:android:e3446a7a16f8d237fd587e",
+        "android_client_info": {
+          "package_name": "com.example.safaripass"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAhehOOUWiNF1Gf_uLHErnnRKRBpCoEQOs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
