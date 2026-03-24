@@ -16,7 +16,7 @@ class GeminiService {
     required String mimeType,
   }) async {
     final model = GenerativeModel(
-      model: 'gemini-2.0-flash', // or 'gemini-1.5-flash'
+      model: 'gemini-2.5-flash', // or 'gemini-1.5-flash'
       apiKey: _apiKey,
       generationConfig: GenerationConfig(
         responseMimeType: 'application/json',
@@ -98,11 +98,44 @@ Handwritten: "Nairobi - Mombasa 2000KSh"
       return _parseResponse(response.text!);
     } catch (e) {
       print('Gemini API error: $e');
-      // Optionally rethrow or return null with error details
       return null;
     }
   }
 
+  // ------------------------------------------------------------------
+  // Ticket parsing from SMS text
+  // ------------------------------------------------------------------
+  static Future<TicketData?> parseSmsText(String smsText) async {
+    final model = GenerativeModel(
+      model: 'gemini-2.0-flash',
+      apiKey: _apiKey,
+      generationConfig: GenerationConfig(
+        responseMimeType: 'application/json',
+        temperature: 0.0,
+      ),
+    );
+
+    final prompt = TextPart("""
+Extract travel details from this SMS ticket. Return ONLY a JSON object with these keys:
+carrier, pnr, departure (ISO 8601), arrival (ISO 8601), origin, destination, seat, status, confidence.
+Use null for missing fields.
+
+SMS: $smsText
+""");
+
+    try {
+      final response = await model.generateContent([Content.multi([prompt])]);
+      if (response.text == null) return null;
+      return _parseResponse(response.text!);
+    } catch (e) {
+      print('Gemini SMS parsing error: $e');
+      return null;
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Shared JSON parser
+  // ------------------------------------------------------------------
   static TicketData? _parseResponse(String jsonString) {
     try {
       // Gemini may wrap JSON in markdown code blocks; clean it
@@ -135,7 +168,7 @@ Handwritten: "Nairobi - Mombasa 2000KSh"
     final regex = RegExp(r'```(?:json)?\s*([\s\S]*?)\s*```');
     final match = regex.firstMatch(text);
     if (match != null) return match.group(1)!;
-    return text; // assume it's raw JSON
+    return text;
   }
 
   /// Converts various date formats to ISO 8601.
@@ -147,11 +180,7 @@ Handwritten: "Nairobi - Mombasa 2000KSh"
       try {
         return DateTime.parse(value).toIso8601String();
       } catch (_) {
-        // Not ISO, attempt to parse common East African formats
-        // e.g., "15/02/2026 14:00", "15 FEB 2026 13:00"
-        // This is complex; for MVP we trust Gemini to output ISO,
-        // but you could add a custom parser here.
-        return value; // fallback, will likely cause DB error
+        return value;
       }
     }
     return null;
@@ -162,8 +191,8 @@ Handwritten: "Nairobi - Mombasa 2000KSh"
 class TicketData {
   final String? carrier;
   final String? pnr;
-  final String? departure; // ISO 8601
-  final String? arrival;   // ISO 8601
+  final String? departure;
+  final String? arrival;
   final String? origin;
   final String? destination;
   final String? seat;
@@ -182,7 +211,6 @@ class TicketData {
     required this.confidence,
   });
 
-  /// Convert to map for database insertion.
   Map<String, dynamic> toMap() {
     return {
       'carrier': carrier,
@@ -193,7 +221,6 @@ class TicketData {
       'destination': destination,
       'seat': seat,
       'status': status ?? 'confirmed',
-      // confidence is not stored in DB but can be used to flag review
     };
   }
 }

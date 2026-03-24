@@ -1,10 +1,8 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart';
 import '../services/gemini_service.dart';
 import '../services/database_helper.dart';
-import '../models/ticket_data.dart';
+import '../widgets/journey_selector_bottom_sheet.dart'; // import the shared selector
 
 class ScannerScreen extends StatefulWidget {
   /// Optional journey ID if the ticket is being added to a specific journey.
@@ -46,9 +44,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
       // If no journey was provided, let the user select or create one
       if (targetJourneyId == null) {
-        targetJourneyId = await _selectJourney();
+        final userId = await DatabaseHelper.instance.getOrCreateDefaultUserId();
+        targetJourneyId = await showJourneySelector(context, userId);
         if (targetJourneyId == null) {
-          // User cancelled journey selection – do not save the ticket
           _showMessage('Ticket not saved. No journey selected.');
           return;
         }
@@ -76,156 +74,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  /// Shows a dialog for the user to select an existing journey or create a new one.
-  /// Returns the chosen journey ID, or null if the operation was cancelled.
-  Future<String?> _selectJourney() async {
-    final dbHelper = DatabaseHelper.instance;
-
-    // Ensure we have a user (for journey creation)
-    final userId = await dbHelper.getOrCreateDefaultUserId();
-
-    // Fetch all existing journeys
-    final journeys = await dbHelper.getAllJourneys(userId);
-
-    if (journeys.isEmpty) {
-      // No journeys exist – ask user to create one
-      final bool? createNew = await _showConfirmationDialog(
-        title: 'No Journeys Found',
-        content: 'You have no journeys yet. Would you like to create one now?',
-      );
-      if (createNew != true) return null;
-      return _createNewJourney(userId);
-    }
-
-    // Show selection dialog
-    return showDialog<String>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Select a Journey'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: journeys.length + 1, // +1 for "Create New"
-              itemBuilder: (ctx, index) {
-                if (index == journeys.length) {
-                  // Last item: Create new journey
-                  return ListTile(
-                    leading: const Icon(Icons.add),
-                    title: const Text('Create New Journey'),
-                    onTap: () {
-                      Navigator.pop(context, 'CREATE_NEW');
-                    },
-                  );
-                }
-                final journey = journeys[index];
-                return ListTile(
-                  title: Text(journey['title'] ?? 'Unnamed Journey'),
-                  subtitle: Text(
-                    '${journey['start_date']} – ${journey['end_date']}',
-                  ),
-                  onTap: () {
-                    Navigator.pop(context, journey['journey_id']);
-                  },
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, null),
-              child: const Text('Cancel'),
-            ),
-          ],
-        );
-      },
-    ).then((selected) async {
-      if (selected == 'CREATE_NEW') {
-        return _createNewJourney(userId);
-      }
-      return selected; // could be null or a journey ID
-    });
-  }
-
-  /// Helper to create a new journey with a default title (current date).
-  Future<String> _createNewJourney(String userId) async {
-    final now = DateTime.now();
-    final startDate = DateTime(now.year, now.month, now.day); // today at 00:00
-    final endDate = startDate.add(const Duration(days: 1)); // default 1-day trip
-
-    String? title;
-    if (mounted) {
-      // Optional: ask user for a title
-      title = await _showTextInputDialog(
-        title: 'New Journey',
-        hint: 'Enter a name (e.g., "Mombasa Trip")',
-      );
-    }
-
-    final journeyId = await DatabaseHelper.instance.createJourney(
-      userID: userId,
-      title: title?.isEmpty ?? true ? 'Trip ${DateFormat.yMMMd().format(now)}' : title,
-      startDate: startDate,
-      endDate: endDate,
-      status: 'upcoming',
-    );
-    return journeyId;
-  }
-
-  /// Simple confirmation dialog (Yes/No).
-  Future<bool?> _showConfirmationDialog({
-    required String title,
-    required String content,
-  }) {
-    return showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(content),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('No'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Yes'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Simple text input dialog.
-  Future<String?> _showTextInputDialog({
-    required String title,
-    String hint = '',
-  }) {
-    final controller = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          decoration: InputDecoration(hintText: hint),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, null),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Create'),
-          ),
-        ],
-      ),
-    );
   }
 
   String _getMimeType(String path) {
