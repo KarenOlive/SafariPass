@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:collection/collection.dart'; 
 import '../services/database_helper.dart';
 import '../services/gemini_service.dart';
 import '../services/sms_consent_service.dart';          
-import '../widgets/ticket_card.dart';
 import '../widgets/sms_prompt_button.dart';
 import '../widgets/current_journey_card.dart';
 import '../widgets/journey_selector_bottom_sheet.dart';
 import '../widgets/sms_consent_modal.dart';
-import 'ticket_detail_screen.dart';
+import '../widgets/journey_card.dart'; 
 
 class TripsTimelineScreen extends StatefulWidget {
   const TripsTimelineScreen({super.key});
@@ -20,18 +20,40 @@ class TripsTimelineScreen extends StatefulWidget {
 }
 
 class _TripsTimelineScreenState extends State<TripsTimelineScreen> {
+  // SMS detection variables
   bool _hasPendingSMS = false;
   bool _isImporting = false;
   String? _pendingSmsContent;
   String? _pendingSmsFrom;
   late SharedPreferences _prefs;
   static const String _lastSmsTimestampKey = 'last_processed_sms_timestamp';
-  final SmsConsentService _smsConsentService = SmsConsentService();  // ← NEW
+  final SmsConsentService _smsConsentService = SmsConsentService();
+
+  // Journeys state
+  List<Map<String, dynamic>> _journeys = [];
+  bool _isLoadingJourneys = true;
+  Map<String, dynamic>? _currentJourney;
+
 
   @override
   void initState() {
     super.initState();
     _initPrefsAndSetupListener();
+    _loadJourneys();
+  }
+
+  Future<void> _loadJourneys() async {
+    setState(() => _isLoadingJourneys = true);
+    final userId = await DatabaseHelper.instance.getOrCreateDefaultUserId();
+    final journeys = await DatabaseHelper.instance.getAllJourneysWithStatus(userId);
+    setState(() {
+      _journeys = journeys;
+      _isLoadingJourneys = false;
+      // Determine current journey (first ongoing one)
+      _currentJourney = journeys.firstWhereOrNull(
+        (j) => j['derived_status'] == 'ongoing',
+      );
+    });
   }
 
   Future<void> _initPrefsAndSetupListener() async {
@@ -147,7 +169,9 @@ class _TripsTimelineScreenState extends State<TripsTimelineScreen> {
 
     _showMessage('✅ Ticket imported successfully!');
 
-    // Restart listener for the next SMS
+       // Refresh journeys list (in case a new journey was created)
+    _loadJourneys();
+          // Restart listener for the next SMS
     _requestPermissionAndListen();
   }
 
@@ -194,9 +218,13 @@ class _TripsTimelineScreenState extends State<TripsTimelineScreen> {
               padding: const EdgeInsets.all(24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const CurrentJourneyCard(),
-                  const SizedBox(height: 24),
+               children: [
+                  // Current Journey Card (only if ongoing)
+                  if (_currentJourney != null) ...[
+                    CurrentJourneyCard(journeyId: _currentJourney!['journey_id']),
+                    const SizedBox(height: 24),
+                  ],
+                  // SMS prompt
                   if (_hasPendingSMS && !_isImporting)
                     SmsPromptButton(onImport: _handleSmsImport),
                   if (_isImporting)
@@ -211,49 +239,88 @@ class _TripsTimelineScreenState extends State<TripsTimelineScreen> {
               ),
             ),
           ),
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: _fetchTickets(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
-              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return SliverToBoxAdapter(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Text(
-                        'No trips found.\nTap the Scan button to add one!',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                      ),
+          // Journeys list
+          SliverToBoxAdapter(
+            child: _isLoadingJourneys
+                ? const Center(child: CircularProgressIndicator())
+                : Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Column(
+                      children: _buildGroupedJourneys(),
                     ),
                   ),
-                );
-              }
-
-              final tickets = snapshot.data!;
-              return SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                      child: TicketCard(
-                        ticket: tickets[index],
-                        onClick: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => TicketDetailScreen(ticket: tickets[index])),
-                        ),
-                      ),
-                    );
-                  },
-                  childCount: tickets.length,
-                ),
-              );
-            },
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
       ),
     );
+  }
+
+  List<Widget> _buildGroupedJourneys() {
+    if (_journeys.isEmpty) {
+      return [
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Text(
+              'No journeys yet.\nTap the Scan button to create one!',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey[600], fontSize: 16),
+            ),
+          ),
+        ),
+      ];
+    }
+
+    // Group by derived_status
+    final Map<String, List<Map<String, dynamic>>> grouped = {
+      'ongoing': [],
+      'upcoming': [],
+      'completed': [],
+    };
+    for (var journey in _journeys) {
+      final status = journey['derived_status'] as String;
+      if (grouped.containsKey(status)) {
+        grouped[status]!.add(journey);
+      } else {
+        grouped['upcoming']!.add(journey);
+      }
+    }
+
+    // Sort each group by start_date (most recent first)
+    for (var key in grouped.keys) {
+      grouped[key]!.sort((a, b) => b['start_date'].compareTo(a['start_date']));
+    }
+
+    final List<Widget> widgets = [];
+
+    void addSection(String title, List<Map<String, dynamic>> journeys) {
+      if (journeys.isEmpty) return;
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 16, bottom: 8),
+          child: Text(
+            title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A237E)),
+          ),
+        ),
+      );
+      for (var journey in journeys) {
+        widgets.add(
+          JourneyCard(
+            journey: journey,
+            onTap: () {
+              // TODO: navigate to journey details screen (could show tickets)
+            },
+          ),
+        );
+      }
+    }
+
+    addSection('In Progress', grouped['ongoing']!);
+    addSection('Upcoming', grouped['upcoming']!);
+    addSection('Completed', grouped['completed']!);
+
+    return widgets;
   }
 }

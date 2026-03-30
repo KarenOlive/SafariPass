@@ -247,6 +247,32 @@ class DatabaseHelper {
     };
   }
 
+Future<List<Map<String, dynamic>>> getAllJourneysWithStatus(String userID) async {
+  final db = await instance.database;
+  final journeys = await db.query(
+    'journey',
+    where: 'user_id = ?',
+    whereArgs: [userID],
+    orderBy: 'start_date DESC',
+  );
+  final now = DateTime.now();
+  for (var journey in journeys) {
+    // Explicitly cast to String before parsing
+    final startStr = journey['start_date'] as String;
+    final endStr = journey['end_date'] as String;
+    final start = DateTime.parse(startStr);
+    final end = DateTime.parse(endStr);
+    if (now.isBefore(start)) {
+      journey['derived_status'] = 'upcoming';
+    } else if (now.isAfter(end)) {
+      journey['derived_status'] = 'completed';
+    } else {
+      journey['derived_status'] = 'ongoing';
+    }
+  }
+  return journeys;
+}
+
   Future<int> updateJourneyStatus(String journeyID, String status) async {
     final db = await instance.database;
     return await db.update(

@@ -1,12 +1,56 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:http/http.dart' as http;
 import 'package:safaripass/env/env.dart';
 
 class GeminiService {
-   static String get _apiKey => Env.geminiApiKey;
+  static String get _apiKey => Env.geminiApiKey;
+  static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-  /// Extracts travel ticket data from an image.
+  /// NEW: Method for the Journey Planner Chat with Grounding via REST API
+  /// This ensures travel advice is up-to-date with current 2026 data.
+  static Future<String?> getJourneySuggestions(String userPrompt) async {
+    final url = Uri.parse('$_baseUrl/gemini-2.5-flash:generateContent?key=$_apiKey');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "systemInstruction": {
+            "parts": [
+              {
+                "text": "You are an expert travel assistant for East Africa named SafariTravel AI. "
+                        "Use Google Search to find the latest 2026 SGR schedules, bus prices (Mash, Modern Coast, etc.), "
+                        "and flight details. Always provide specific prices in KES/UGX/TZS and current travel times."
+              }
+            ]
+          },
+          "contents": [
+            {
+              "parts": [{"text": userPrompt}]
+            }
+          ],
+          "tools": [
+            {"googleSearch": {}} // Google Search Grounding Enabled
+          ]
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['candidates'][0]['content']['parts'][0]['text'];
+      } else {
+        print('Grounding API Error: ${response.statusCode} - ${response.body}');
+        return "I couldn't fetch live data right now. Please try again.";
+      }
+    } catch (e) {
+      print('Grounding Chat Error: $e');
+      return "I'm having trouble connecting to the travel network right now.";
+    }
+  }
+
+  /// Extracts travel ticket data from an image using REST API & Grounding.
   /// 
   /// [imageBytes] – Raw image data.
   /// [mimeType] – MIME type of the image (e.g., 'image/jpeg', 'image/png').
@@ -15,17 +59,10 @@ class GeminiService {
     required Uint8List imageBytes,
     required String mimeType,
   }) async {
-    final model = GenerativeModel(
-      model: 'gemini-2.5-flash', // or 'gemini-1.5-flash'
-      apiKey: _apiKey,
-      generationConfig: GenerationConfig(
-        responseMimeType: 'application/json',
-        temperature: 0.0, // keep it factual
-      ),
-    );
+    final url = Uri.parse('$_baseUrl/gemini-2.5-flash:generateContent?key=$_apiKey');
 
     // Comprehensive system prompt with examples
-    final prompt = TextPart("""
+    final promptText = """
 You are an expert at extracting travel information from East African tickets.
 Tickets can be from SGR (train), Jambojet, Safarilink, Kenya Airways, buses, or handwritten notes.
 Extract as many of the following fields as possible from the image:
@@ -81,54 +118,94 @@ Handwritten: "Nairobi - Mombasa 2000KSh"
   "status": null,
   "confidence": 0.6
 }
-""");
-
-    final imagePart = DataPart(mimeType, imageBytes);
+""";
 
     try {
-      final response = await model.generateContent([
-        Content.multi([prompt, imagePart])
-      ]);
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "contents": [
+            {
+              "parts": [
+                {"text": promptText},
+                {
+                  "inlineData": {
+                    "mimeType": mimeType,
+                    "data": base64Encode(imageBytes)
+                  }
+                }
+              ]
+            }
+          ],
+          "tools": [
+            {"googleSearch": {}} // Grounding added to verify flight/train numbers
+          ],
+          "generationConfig": {
+            "responseMimeType": "application/json",
+            "temperature": 0.0 // keep it factual
+          }
+        }),
+      );
 
-      if (response.text == null) {
-        print('Gemini returned empty response');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final textResponse = data['candidates'][0]['content']['parts'][0]['text'];
+        return _parseResponse(textResponse);
+      } else {
+        print('Gemini API Error: ${response.statusCode} - ${response.body}');
         return null;
       }
-
-      return _parseResponse(response.text!);
     } catch (e) {
-      print('Gemini API error: $e');
+      print('Gemini API exception: $e');
       return null;
     }
   }
 
   // ------------------------------------------------------------------
-  // Ticket parsing from SMS text
+  // Ticket parsing from SMS text using REST API
   // ------------------------------------------------------------------
   static Future<TicketData?> parseSmsText(String smsText) async {
-    final model = GenerativeModel(
-      model: 'gemini-2.0-flash',
-      apiKey: _apiKey,
-      generationConfig: GenerationConfig(
-        responseMimeType: 'application/json',
-        temperature: 0.0,
-      ),
-    );
+    final url = Uri.parse('$_baseUrl/gemini-2.5-flash:generateContent?key=$_apiKey');
 
-    final prompt = TextPart("""
+    final promptText = """
 Extract travel details from this SMS ticket. Return ONLY a JSON object with these keys:
 carrier, pnr, departure (ISO 8601), arrival (ISO 8601), origin, destination, seat, status, confidence.
 Use null for missing fields.
 
 SMS: $smsText
-""");
+""";
 
     try {
-      final response = await model.generateContent([Content.multi([prompt])]);
-      if (response.text == null) return null;
-      return _parseResponse(response.text!);
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "contents": [
+            {
+              "parts": [{"text": promptText}]
+            }
+          ],
+          "tools": [
+            {"googleSearch": {}} // Grounding added here
+          ],
+          "generationConfig": {
+            "responseMimeType": "application/json",
+            "temperature": 0.0
+          }
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final textResponse = data['candidates'][0]['content']['parts'][0]['text'];
+        return _parseResponse(textResponse);
+      } else {
+        print('Gemini SMS parsing error: ${response.statusCode} - ${response.body}');
+        return null;
+      }
     } catch (e) {
-      print('Gemini SMS parsing error: $e');
+      print('Gemini SMS parsing exception: $e');
       return null;
     }
   }

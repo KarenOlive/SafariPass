@@ -2,12 +2,14 @@ require("dotenv").config();
 
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const axios = require('axios');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 admin.initializeApp();
 const db = admin.firestore();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const aviationAPI = process.env.AVIATION_API_KEY;
 
 function parseIso(date) {
   if (!date) return 0;
@@ -233,4 +235,65 @@ exports.onAuthUserCreate = functions.auth.user().onCreate(async (user) => {
     user_id: user.uid,
     created_at: admin.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
+});
+
+// Scheduled function to run every hour
+exports.monitorFlightStatus = functions.pubsub.schedule('0 * * * *').onRun(async (context) => {
+  const db = admin.firestore();
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+
+  // Fetch all flight tickets that are not yet completed and whose departure is today or tomorrow
+  const ticketsSnapshot = await db.collection('tickets')
+    .where('carrier', '>=', '')
+    .where('departure', '>=', now.toISOString())
+    .where('departure', '<=', tomorrow.toISOString())
+    .get();
+
+  const updates = [];
+
+  for (const doc of ticketsSnapshot.docs) {
+    const ticket = doc.data();
+    // Extract flight number (e.g., "JM 123" -> "JM123")
+    const flightNumber = ticket.pnr || `${ticket.carrier}${ticket.pnr}`; // adjust as needed
+
+    // Query Aviationstack
+    const response = await axios.get(AVIATIONSTACK_URL, {
+      params: {
+        access_key: AVIATIONSTACK_API_KEY,
+        flight_iata: flightNumber,
+        flight_date: ticket.departure.split('T')[0],
+      },
+    });
+
+    const flightData = response.data.data[0];
+    if (!flightData) continue;
+
+    const newStatus = flightData.flight_status; // e.g., "scheduled", "active", "landed", "cancelled", "delayed"
+    const newDelay = flightData.delay; // minutes
+    const newGate = flightData.departure.gate;
+
+    let changed = false;
+    if (newStatus !== ticket.status) changed = true;
+    if (newDelay !== ticket.delay) changed = true;
+    if (newGate !== ticket.gate) changed = true;
+
+    if (changed) {
+      const updateData = {
+        status: newStatus,
+        delay: newDelay,
+        gate: newGate,
+        last_modified: admin.firestore.FieldValue.serverTimestamp(),
+      };
+      await doc.ref.update(updateData);
+
+      // Optionally send a push notification or SMS (via Twilio) to the user
+      // You'll need to know the user's phone number (from users collection) and use Twilio
+      // For simplicity, we'll just log it.
+      console.log(`Flight ${flightNumber} status updated to ${newStatus}`);
+    }
+  }
+
+  return null;
 });

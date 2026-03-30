@@ -11,7 +11,8 @@ class TicketCard extends StatelessWidget {
     final carrier = (ticket['carrier'] ?? '').toString().toLowerCase();
     if (carrier.contains('sgr') || carrier.contains('train')) return Icons.train;
     if (carrier.contains('bus') || carrier.contains('coach')) return Icons.directions_bus;
-    return Icons.flight;
+    if(carrier.contains('flight') || carrier.contains('airline')) return Icons.flight;
+    return Icons.directions_transit; // Default icon for unknown types
   }
 
   String _getTypeLabel() {
