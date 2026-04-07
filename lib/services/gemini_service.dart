@@ -138,9 +138,6 @@ Handwritten: "Nairobi - Mombasa 2000KSh"
               ]
             }
           ],
-          "tools": [
-            {"googleSearch": {}} // Grounding added to verify flight/train numbers
-          ],
           "generationConfig": {
             "responseMimeType": "application/json",
             "temperature": 0.0 // keep it factual
@@ -185,9 +182,6 @@ SMS: $smsText
             {
               "parts": [{"text": promptText}]
             }
-          ],
-          "tools": [
-            {"googleSearch": {}} // Grounding added here
           ],
           "generationConfig": {
             "responseMimeType": "application/json",
@@ -298,6 +292,7 @@ class TicketData {
       'destination': destination,
       'seat': seat,
       'status': status ?? 'confirmed',
+      'confidence_score': confidence,
     };
   }
 }

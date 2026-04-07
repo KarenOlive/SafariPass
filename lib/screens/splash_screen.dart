@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'main_layout.dart';
+import 'phone_auth_screen.dart';
 import 'dart:math' as math;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:ui';
@@ -12,7 +14,7 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-   final Color _kBackgroundColor = const Color(0xFF1A237E);
+  final Color _kBackgroundColor = const Color(0xFF1A237E);
   final Color _kOrangeGlow = const Color(0xFFFF6D00);
 
   @override
@@ -25,8 +27,18 @@ class _SplashScreenState extends State<SplashScreen> {
     // Simulate a loading delay (e.g., checking local SQLite)
     await Future.delayed(const Duration(milliseconds: 3000));
     
-    if (mounted) {
-      // pushReplacement ensures the user can't hit the "Back" button to return to the splash screen
+    if (!mounted) return;
+
+    // Check if user is already signed in with Firebase
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      // Not signed in – go to phone auth screen
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const PhoneAuthScreen()),
+      );
+    } else {
+      // Already signed in – go directly to main layout
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const MainLayout()),
@@ -40,10 +52,7 @@ class _SplashScreenState extends State<SplashScreen> {
       backgroundColor: _kBackgroundColor,
       body: Stack(
         children: [
-          // 1. Background Blurred Circles
           _buildBackgroundDecorations(),
-          
-       // 2. Main Content
           SafeArea(
             child: Center(
               child: Column(
@@ -65,7 +74,6 @@ class _SplashScreenState extends State<SplashScreen> {
                   Text(
                     "Your journey, simplified",
                     style: TextStyle(
-                      // UPDATED API
                       color: Colors.white.withValues(alpha: 0.7),
                       fontSize: 16,
                       fontWeight: FontWeight.w400,
@@ -79,7 +87,6 @@ class _SplashScreenState extends State<SplashScreen> {
                     child: Text(
                       "Powered by Gemini AI",
                       style: TextStyle(
-                        // UPDATED API
                         color: Colors.white.withValues(alpha: 0.5),
                         fontSize: 14,
                       ),
@@ -167,7 +174,7 @@ class _SplashScreenState extends State<SplashScreen> {
               end: Alignment.bottomRight,
               colors: [
                 Colors.white.withValues(alpha: 0.7),
-                Colors.white.withValues(alpha: .05),
+                Colors.white.withValues(alpha: 0.05),
               ],
             ),
             // The thin, brighter border defines the glass edge
@@ -182,8 +189,6 @@ class _SplashScreenState extends State<SplashScreen> {
               'assets/passport.png',
               width: 64,
               height: 64,
-              // This keeps the icon white if your PNG is a different color
-              //color: Colors.white, 
               fit: BoxFit.contain,
             ),
           ),
@@ -191,12 +196,7 @@ class _SplashScreenState extends State<SplashScreen> {
       ],
     );
   }
-}  
-
-
-
-
-
+}
 
 // ==========================================
 // Custom Widget: Bouncing Dots Loader
@@ -215,7 +215,6 @@ class _BouncingDotsLoaderState extends State<BouncingDotsLoader>
   @override
   void initState() {
     super.initState();
-    // A single controller running infinitely
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -239,11 +238,8 @@ class _BouncingDotsLoaderState extends State<BouncingDotsLoader>
           return Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Dot 1 (No Delay)
               _buildDot(0.0),
-              // Dot 2 (Delayed)
               _buildDot(0.2),
-              // Dot 3 (More Delayed)
               _buildDot(0.4),
             ],
           );
@@ -252,17 +248,11 @@ class _BouncingDotsLoaderState extends State<BouncingDotsLoader>
     );
   }
 
-  // Helper to build a single dot with an animated transform
   Widget _buildDot(double delay) {
-    // Calculate current animation value with delay adjustment
-    final double animationValue =
-        (_controller.value + delay) % 1.0;
-
-    // Use sine wave to create smooth up and down bouncing
+    final double animationValue = (_controller.value + delay) % 1.0;
     final double offset = math.sin(animationValue * math.pi * 2) * 6;
-
     return Transform.translate(
-      offset: Offset(0, -offset.abs()), // Only move up
+      offset: Offset(0, -offset.abs()),
       child: Container(
         width: 10,
         height: 10,

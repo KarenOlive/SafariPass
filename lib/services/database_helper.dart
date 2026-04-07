@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:uuid/uuid.dart'; 
+import 'package:firebase_auth/firebase_auth.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -175,6 +176,55 @@ class DatabaseHelper {
     return maps.isNotEmpty ? maps.first : null;
   }
 
+  /// Creates or updates a user record using the Firebase user ID.
+/// If the user already exists (by user_id), it updates name and phone number.
+/// If not, it inserts a new record.
+/// After any change, `isSynced` is set to 0 to trigger cloud sync.
+Future<void> createOrUpdateFirebaseUser({
+  required String userId,
+  String? name,
+  String? phoneNumber,
+}) async {
+  final db = await instance.database;
+  final existing = await db.query(
+    'user',
+    where: 'user_id = ?',
+    whereArgs: [userId],
+  );
+  final now = _now();
+  if (existing.isEmpty) {
+    await db.insert('user', {
+      'user_id': userId,
+      'name': name ?? '',
+      'phone_hash': phoneNumber ?? '',
+      'created_at': now,
+      'last_modified': now,
+      'isSynced': 0,
+    });
+  } else {
+    final updateData = {
+      'last_modified': now,
+      'isSynced': 0,
+    };
+    if (name != null) updateData['name'] = name;
+    if (phoneNumber != null) updateData['phone_hash'] = phoneNumber;
+    await db.update(
+      'user',
+      updateData,
+      where: 'user_id = ?',
+      whereArgs: [userId],
+    );
+  }
+}
+
+/// Returns the user record for the currently logged‑in Firebase user (if any).
+/// Returns null if no user is signed in or the record does not exist.
+Future<Map<String, dynamic>?> getCurrentFirebaseUser() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return null;
+  return getUser(user.uid);
+}
+
   /// Returns the ID of the first user, or creates a default user if none exist.
   Future<String> getOrCreateDefaultUserId() async {
     final db = await instance.database;
@@ -185,7 +235,7 @@ class DatabaseHelper {
     // Create a default user
     return createUser(name: 'Default User');
   }
-  
+
   // ==================== Journey operations ====================
 
   Future<String> createJourney({
@@ -249,27 +299,33 @@ class DatabaseHelper {
 
 Future<List<Map<String, dynamic>>> getAllJourneysWithStatus(String userID) async {
   final db = await instance.database;
-  final journeys = await db.query(
+
+  final journeysRaw = await db.query(
     'journey',
     where: 'user_id = ?',
     whereArgs: [userID],
     orderBy: 'start_date DESC',
   );
+
   final now = DateTime.now();
-  for (var journey in journeys) {
-    // Explicitly cast to String before parsing
-    final startStr = journey['start_date'] as String;
-    final endStr = journey['end_date'] as String;
-    final start = DateTime.parse(startStr);
-    final end = DateTime.parse(endStr);
+
+  final journeys = journeysRaw.map((journey) {
+    final mutableJourney = Map<String, dynamic>.from(journey); // ✅ FIX
+
+    final start = DateTime.parse(mutableJourney['start_date'] as String);
+    final end = DateTime.parse(mutableJourney['end_date'] as String);
+
     if (now.isBefore(start)) {
-      journey['derived_status'] = 'upcoming';
+      mutableJourney['derived_status'] = 'upcoming';
     } else if (now.isAfter(end)) {
-      journey['derived_status'] = 'completed';
+      mutableJourney['derived_status'] = 'completed';
     } else {
-      journey['derived_status'] = 'ongoing';
+      mutableJourney['derived_status'] = 'ongoing';
     }
-  }
+
+    return mutableJourney;
+  }).toList();
+
   return journeys;
 }
 

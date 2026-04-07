@@ -1,1 +1,44 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"safaripass-production-b6be3","appId":"1:160923671387:android:e3446a7a16f8d237fd587e","fileOutput":"android/app/google-services.json"}},"ios":{"default":{"projectId":"safaripass-production-b6be3","appId":"1:160923671387:ios:89d1969cec650641fd587e","uploadDebugSymbols":false,"fileOutput":"ios/Runner/GoogleService-Info.plist"}},"dart":{"lib/firebase_options.dart":{"projectId":"safaripass-production-b6be3","configurations":{"android":"1:160923671387:android:e3446a7a16f8d237fd587e","ios":"1:160923671387:ios:89d1969cec650641fd587e"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "safaripass-production-b6be3",
+          "appId": "1:160923671387:android:e3446a7a16f8d237fd587e",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "safaripass-production-b6be3",
+          "appId": "1:160923671387:ios:89d1969cec650641fd587e",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "safaripass-production-b6be3",
+          "configurations": {
+            "android": "1:160923671387:android:e3446a7a16f8d237fd587e",
+            "ios": "1:160923671387:ios:89d1969cec650641fd587e"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ]
+}

@@ -42,19 +42,37 @@ class _TripsTimelineScreenState extends State<TripsTimelineScreen> {
     _loadJourneys();
   }
 
+  @override
+void didChangeDependencies() {
+  super.didChangeDependencies();
+  _loadJourneys(); // ✅ ensures refresh after scanning
+}
+
   Future<void> _loadJourneys() async {
-    setState(() => _isLoadingJourneys = true);
+  setState(() => _isLoadingJourneys = true);
+
+  try {
     final userId = await DatabaseHelper.instance.getOrCreateDefaultUserId();
     final journeys = await DatabaseHelper.instance.getAllJourneysWithStatus(userId);
+
+    print("🔥 Journeys Loaded: $journeys"); // ✅ DEBUG
+
     setState(() {
       _journeys = journeys;
       _isLoadingJourneys = false;
-      // Determine current journey (first ongoing one)
+
       _currentJourney = journeys.firstWhereOrNull(
         (j) => j['derived_status'] == 'ongoing',
       );
     });
+  } catch (e) {
+    print("❌ Error loading journeys: $e");
+
+    setState(() {
+      _isLoadingJourneys = false;
+    });
   }
+}
 
   Future<void> _initPrefsAndSetupListener() async {
     _prefs = await SharedPreferences.getInstance();
