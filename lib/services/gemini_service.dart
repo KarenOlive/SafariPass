@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:safaripass/env/env.dart';
 
@@ -51,11 +51,11 @@ class GeminiService {
   }
 
   /// Extracts travel ticket data from an image using REST API & Grounding.
-  /// 
+  ///
   /// [imageBytes] – Raw image data.
   /// [mimeType] – MIME type of the image (e.g., 'image/jpeg', 'image/png').
-  /// Returns a [TicketData] object if successful, otherwise null.
-  static Future<TicketData?> parseTicket({
+  /// Returns a list of [TicketData] objects when the ticket contains multiple trips.
+  static Future<List<TicketData>?> parseTicket({
     required Uint8List imageBytes,
     required String mimeType,
   }) async {
@@ -65,59 +65,47 @@ class GeminiService {
     final promptText = """
 You are an expert at extracting travel information from East African tickets.
 Tickets can be from SGR (train), Jambojet, Safarilink, Kenya Airways, buses, or handwritten notes.
-Extract as many of the following fields as possible from the image:
 
-- carrier: e.g., "SGR", "Jambojet", "Safarilink", "Kenya Airways", "Modern Coast"
-- pnr: booking reference (e.g., "SGR123456", "JB98765", "KQ123")
-- departure: full date and time in ISO 8601 format (e.g., "2026-02-15T14:00:00")
-- arrival: ISO 8601 timestamp if available (e.g., "2026-02-15T19:30:00")
-- origin: departure city or airport code (e.g., "Nairobi", "NBO")
-- destination: arrival city or airport code (e.g., "Mombasa", "MBA")
-- seat: seat number, coach, or compartment (e.g., "12A", "Coach 5")
-- status: ticket status if mentioned (e.g., "confirmed", "boarding", "delayed")
-- confidence: your confidence in the extraction (0.0–1.0)
+IMPORTANT: If the ticket contains multiple trip segments (e.g. Round-Trip with outbound and return, Connecting Flights, or Multiple Passengers with different legs), you MUST return a SEPARATE object for EACH segment in the JSON array.
 
-Return ONLY a JSON object with these keys. Use null for missing fields.
+Each object should include:
+- carrier
+- pnr
+- departure (ISO 8601)
+- arrival (ISO 8601)
+- origin
+- destination
+- seat
+- status
+- confidence
+Use null for missing fields.
+Return ONLY the JSON array or object.
 
 Examples:
-SGR SMS: "Ticket No: SGR123456, Train: 5, Date: 15/02/2026, Time: 14:00, Coach: 2, Seat: 12"
-→ {
-  "carrier": "SGR",
-  "pnr": "SGR123456",
-  "departure": "2026-02-15T14:00:00",
-  "arrival": null,
-  "origin": "Nairobi",
-  "destination": "Mombasa",
-  "seat": "Coach 2, Seat 12",
-  "status": "confirmed",
-  "confidence": 0.95
-}
-
-Jambojet WhatsApp: "Booking Ref: JB98765, Flight: JM 123, Date: 15 FEB 2026, Time: 13:00, Gate: 12"
-→ {
-  "carrier": "Jambojet",
-  "pnr": "JB98765",
-  "departure": "2026-02-15T13:00:00",
-  "arrival": null,
-  "origin": "Nairobi",
-  "destination": "Mombasa",
-  "seat": null,
-  "status": "confirmed",
-  "confidence": 0.9
-}
-
-Handwritten: "Nairobi - Mombasa 2000KSh"
-→ {
-  "carrier": null,
-  "pnr": null,
-  "departure": null,
-  "arrival": null,
-  "origin": "Nairobi",
-  "destination": "Mombasa",
-  "seat": null,
-  "status": null,
-  "confidence": 0.6
-}
+[
+  {
+    "carrier": "SGR",
+    "pnr": "SGR123456",
+    "departure": "2026-02-15T14:00:00",
+    "arrival": "2026-02-15T20:00:00",
+    "origin": "Nairobi",
+    "destination": "Mombasa",
+    "seat": "Coach 2, Seat 12",
+    "status": "confirmed",
+    "confidence": 0.95
+  },
+  {
+    "carrier": "SGR",
+    "pnr": "SGR123456",
+    "departure": "2026-02-16T08:00:00",
+    "arrival": "2026-02-16T13:00:00",
+    "origin": "Mombasa",
+    "destination": "Nairobi",
+    "seat": "Coach 3, Seat 06",
+    "status": "confirmed",
+    "confidence": 0.9
+  }
+]
 """;
 
     try {
@@ -148,13 +136,106 @@ Handwritten: "Nairobi - Mombasa 2000KSh"
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final textResponse = data['candidates'][0]['content']['parts'][0]['text'];
-        return _parseResponse(textResponse);
+        return _parseResponseList(textResponse);
       } else {
-        print('Gemini API Error: ${response.statusCode} - ${response.body}');
+        debugPrint('Gemini API Error: ${response.statusCode} - ${response.body}');
         return null;
       }
     } catch (e) {
-      print('Gemini API exception: $e');
+      debugPrint('Gemini API exception: $e');
+      return null;
+    }
+  }
+
+  /// Extracts travel ticket data from raw OCR text using REST API.
+  ///
+  /// [rawText] – OCR extracted text from the image.
+  /// Returns a list of [TicketData] objects when the ticket contains multiple trips.
+  static Future<List<TicketData>?> parseTicketFromText(String rawText) async {
+    final url = Uri.parse('https://api.groq.com/openai/v1/chat/completions');
+
+    final promptText = """
+You are an expert at extracting travel information from East African tickets based on raw OCR text.
+Tickets can be from SGR (train), Jambojet, Safarilink, Kenya Airways, buses, or manually typed.
+The following text is OCR-extracted from a ticket image. It may contain typos or disjointed words.
+
+IMPORTANT: If the text describes multiple travel segments (e.g. Round-Trip with outbound and return, Connecting Flights, or Multiple Passengers with different legs), you MUST return a SEPARATE object for EACH segment in the "tickets" array.
+
+Return ONLY a JSON object containing an array called "tickets".
+Each object should include:
+- carrier
+- pnr
+- departure (ISO 8601)
+- arrival (ISO 8601)
+- origin
+- destination
+- seat
+- status
+- confidence
+Use null for missing fields.
+
+Example Response:
+{
+  "tickets": [
+    {
+      "carrier": "Jambojet",
+      "pnr": "ABC123",
+      "departure": "2026-05-10T10:00:00",
+      "arrival": "2026-05-10T11:00:00",
+      "origin": "NBO",
+      "destination": "MBA",
+      "seat": "12A",
+      "status": "confirmed",
+      "confidence": 0.98
+    },
+    {
+      "carrier": "Jambojet",
+      "pnr": "ABC123",
+      "departure": "2026-05-15T18:00:00",
+      "arrival": "2026-05-15T19:00:00",
+      "origin": "MBA",
+      "destination": "NBO",
+      "seat": "14C",
+      "status": "confirmed",
+      "confidence": 0.95
+    }
+  ]
+}
+
+OCR Text:
+$rawText
+""";
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${Env.groqApiKey}'
+        },
+        body: jsonEncode({
+          "model": "llama-3.3-70b-versatile",
+          "messages": [
+            {
+              "role": "user",
+              "content": promptText
+            }
+          ],
+          "response_format": {"type": "json_object"},
+          "temperature": 0.0 
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final textResponse = data['choices'][0]['message']['content'];
+        return _parseResponseList(textResponse);
+      } else {
+        debugPrint('Groq Text Parsing Error: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Groq Text Parsing exception: $e');
       return null;
     }
   }
@@ -162,12 +243,15 @@ Handwritten: "Nairobi - Mombasa 2000KSh"
   // ------------------------------------------------------------------
   // Ticket parsing from SMS text using REST API
   // ------------------------------------------------------------------
-  static Future<TicketData?> parseSmsText(String smsText) async {
-    final url = Uri.parse('$_baseUrl/gemini-2.5-flash:generateContent?key=$_apiKey');
+  static Future<List<TicketData>?> parseSmsText(String smsText) async {
+    final url = Uri.parse('https://api.groq.com/openai/v1/chat/completions');
 
     final promptText = """
-Extract travel details from this SMS ticket. Return ONLY a JSON object with these keys:
-carrier, pnr, departure (ISO 8601), arrival (ISO 8601), origin, destination, seat, status, confidence.
+Extract travel details from this SMS ticket.
+IMPORTANT: If the SMS describes multiple segments or a round trip, return a SEPARATE object for EACH segment in the "tickets" array.
+
+Return ONLY a JSON object containing an array called "tickets".
+Each object should include: carrier, pnr, departure (ISO 8601), arrival (ISO 8601), origin, destination, seat, status, confidence.
 Use null for missing fields.
 
 SMS: $smsText
@@ -176,62 +260,85 @@ SMS: $smsText
     try {
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${Env.groqApiKey}'
+        },
         body: jsonEncode({
-          "contents": [
+          "model": "llama-3.3-70b-versatile",
+          "messages": [
             {
-              "parts": [{"text": promptText}]
+              "role": "user",
+              "content": promptText
             }
           ],
-          "generationConfig": {
-            "responseMimeType": "application/json",
-            "temperature": 0.0
-          }
+          "response_format": {"type": "json_object"},
+          "temperature": 0.0
         }),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final textResponse = data['candidates'][0]['content']['parts'][0]['text'];
-        return _parseResponse(textResponse);
+        final textResponse = data['choices'][0]['message']['content'];
+        return _parseResponseList(textResponse);
       } else {
-        print('Gemini SMS parsing error: ${response.statusCode} - ${response.body}');
+        debugPrint('Groq SMS parsing error: ${response.statusCode} - ${response.body}');
         return null;
       }
     } catch (e) {
-      print('Gemini SMS parsing exception: $e');
+      debugPrint('Groq SMS parsing exception: $e');
       return null;
     }
   }
 
   // ------------------------------------------------------------------
-  // Shared JSON parser
+  // Shared JSON parser for single ticket or list of tickets
   // ------------------------------------------------------------------
-  static TicketData? _parseResponse(String jsonString) {
+  static List<TicketData>? _parseResponseList(String jsonString) {
     try {
-      // Gemini may wrap JSON in markdown code blocks; clean it
       final cleaned = _extractJson(jsonString);
-      final Map<String, dynamic> map = jsonDecode(cleaned);
+      final decoded = jsonDecode(cleaned);
 
-      // Convert date strings to ISO 8601 if they aren't already
-      final departure = _toIso8601(map['departure']);
-      final arrival = _toIso8601(map['arrival']);
+      final items = <Map<String, dynamic>>[];
+      if (decoded is List) {
+        for (final entry in decoded) {
+          if (entry is Map<String, dynamic>) {
+            items.add(entry);
+          }
+        }
+      } else if (decoded is Map<String, dynamic>) {
+        if (decoded.containsKey('tickets') && decoded['tickets'] is List) {
+          for (final entry in decoded['tickets']) {
+            if (entry is Map<String, dynamic>) {
+              items.add(entry);
+            }
+          }
+        } else {
+          items.add(decoded);
+        }
+      } else {
+        throw FormatException('Unexpected JSON structure');
+      }
 
-      return TicketData(
-        carrier: map['carrier'] as String?,
-        pnr: map['pnr'] as String?,
-        departure: departure,
-        arrival: arrival,
-        origin: map['origin'] as String?,
-        destination: map['destination'] as String?,
-        seat: map['seat'] as String?,
-        status: map['status'] as String?,
-        confidence: (map['confidence'] as num?)?.toDouble() ?? 0.5,
-      );
+      return items.map(_normalizeTicketData).toList();
     } catch (e) {
-      print('Failed to parse Gemini JSON: $e\nRaw: $jsonString');
+      debugPrint('Failed to parse Gemini JSON list: $e\nRaw: $jsonString');
       return null;
     }
+  }
+
+  static TicketData _normalizeTicketData(Map<String, dynamic> map) {
+    return TicketData(
+      carrier: map['carrier'] as String?,
+      pnr: map['pnr'] as String?,
+      departure: _toIso8601(map['departure']),
+      arrival: _toIso8601(map['arrival']),
+      origin: map['origin'] as String?,
+      destination: map['destination'] as String?,
+      seat: map['seat'] as String?,
+      status: map['status'] as String?,
+      confidence: (map['confidence'] as num?)?.toDouble() ?? 0.5,
+    );
   }
 
   /// Removes markdown code fences if present.
@@ -245,9 +352,7 @@ SMS: $smsText
   /// Converts various date formats to ISO 8601.
   static String? _toIso8601(dynamic value) {
     if (value == null) return null;
-    // If it's already an ISO string, return as-is
     if (value is String) {
-      // Try parsing with DateTime to validate
       try {
         return DateTime.parse(value).toIso8601String();
       } catch (_) {
@@ -256,6 +361,8 @@ SMS: $smsText
     }
     return null;
   }
+
+  /// Removes markdown code fences if present.
 }
 
 /// Data class matching our ticket table fields.

@@ -33,21 +33,47 @@ class _SmsPromptButtonState extends State<SmsPromptButton> {
       onTap: () => _showConsentModal(context),
       child: Container(
         decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFF1A237E), Color(0xFF3949AB)]),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: const Color(0xFF1A237E).withAlpha(80), blurRadius: 10, offset: const Offset(0, 4))],
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1A2151), Color(0xFF2A3477)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF1A2151).withValues(alpha: 0.25),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            )
+          ],
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text('New SGR Ticket Detected', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                SizedBox(height: 4),
-                Text('Tap to import from SMS', style: TextStyle(color: Colors.white70, fontSize: 14)),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'New SGR Ticket Detected',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 17,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Tap to import from SMS',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
             ),
             const Icon(Icons.chevron_right, color: Colors.white, size: 28),
           ],

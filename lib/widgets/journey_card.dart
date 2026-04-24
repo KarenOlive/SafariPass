@@ -19,7 +19,7 @@ class JourneyCard extends StatelessWidget {
     switch (status) {
       case 'ongoing':
         statusText = 'IN PROGRESS';
-        statusColor = const Color(0xFFFF6D00);
+        statusColor = const Color(0xFFF27121);
         break;
       case 'completed':
         statusText = 'COMPLETED';
@@ -30,15 +30,22 @@ class JourneyCard extends StatelessWidget {
         statusColor = Colors.blue;
     }
 
-    return Card(
+    return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(color: Colors.black12, blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -54,7 +61,7 @@ class JourneyCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.2),
+                      color: statusColor.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -71,6 +78,7 @@ class JourneyCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
         ),
       ),
     );

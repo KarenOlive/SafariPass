@@ -34,7 +34,7 @@ class JourneySelectorBottomSheet extends StatelessWidget {
         children: [
           const Text(
             'Select a Journey',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A237E)),
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A2151)),
           ),
           const SizedBox(height: 16),
           FutureBuilder<List<Map<String, dynamic>>>(
@@ -52,7 +52,7 @@ class JourneySelectorBottomSheet extends StatelessWidget {
                   itemBuilder: (ctx, index) {
                     if (index == journeys.length) {
                       return ListTile(
-                        leading: const Icon(Icons.add, color: Color(0xFFFF6D00)),
+                        leading: const Icon(Icons.add, color: Color(0xFFF27121)),
                         title: const Text('Create New Journey'),
                         onTap: () => Navigator.pop(context, 'CREATE_NEW'),
                       );
@@ -99,7 +99,7 @@ Future<String> _createNewJourney(BuildContext context, String userId) async {
         TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('Cancel')),
         ElevatedButton(
           onPressed: () => Navigator.pop(ctx, ''),
-          child: const Text('Skip'),
+          child: const Text('Skip'),//should be able to skip and just use default title with date
         ),
       ],
     ),

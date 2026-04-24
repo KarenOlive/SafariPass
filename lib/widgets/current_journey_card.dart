@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../services/database_helper.dart';
 import 'timeline_segment.dart';
 
@@ -14,6 +15,9 @@ class _CurrentJourneyCardState extends State<CurrentJourneyCard> {
   List<Map<String, dynamic>> _tickets = [];
   bool _isLoading = true;
 
+  // Journey-level date awareness
+  bool _isJourneyPast = false;
+
   @override
   void initState() {
     super.initState();
@@ -21,11 +25,37 @@ class _CurrentJourneyCardState extends State<CurrentJourneyCard> {
   }
 
   Future<void> _loadTickets() async {
-    final tickets = await DatabaseHelper.instance.getTicketsForJourney(widget.journeyId);
+    final fullJourney = await DatabaseHelper.instance.getFullJourney(widget.journeyId);
+    final journey = fullJourney['journey'] as Map<String, dynamic>?;
+    final tickets = List<Map<String, dynamic>>.from(fullJourney['tickets'] ?? []);
+
     // Sort tickets by departure time (ascending)
-    tickets.sort((a, b) => a['departure'].compareTo(b['departure']));
+    tickets.sort((a, b) => (a['departure'] ?? '').compareTo(b['departure'] ?? ''));
+
+    // Determine if the whole journey is past based on end_date
+    bool isPast = false;
+    if (journey != null && journey['end_date'] != null) {
+      try {
+        final endDate = DateTime.parse(journey['end_date']);
+        isPast = DateTime.now().isAfter(endDate);
+      } catch (_) {}
+    }
+
+    // Fallback: if no journey end_date, check if ALL ticket departures are past
+    if (!isPast && tickets.isNotEmpty) {
+      isPast = tickets.every((t) {
+        try {
+          return t['departure'] != null &&
+              DateTime.now().isAfter(DateTime.parse(t['departure']));
+        } catch (_) {
+          return false;
+        }
+      });
+    }
+
     setState(() {
       _tickets = tickets;
+      _isJourneyPast = isPast;
       _isLoading = false;
     });
   }
@@ -36,9 +66,20 @@ class _CurrentJourneyCardState extends State<CurrentJourneyCard> {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFFF6D00), width: 2),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: _isJourneyPast ? Colors.grey.shade300 : const Color(0xFFF27121),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: _isJourneyPast
+                ? Colors.black.withValues(alpha: 0.04)
+                : const Color(0xFFF27121).withValues(alpha: 0.15),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -46,21 +87,102 @@ class _CurrentJourneyCardState extends State<CurrentJourneyCard> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Current Journey', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF1A237E))),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(color: const Color(0xFFFF6D00), borderRadius: BorderRadius.circular(20)),
-                child: const Text('IN PROGRESS', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _isJourneyPast ? 'Past Journey' : 'Current Journey',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                      color: _isJourneyPast ? Colors.grey[600] : const Color(0xFF1A2151),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _isJourneyPast ? 'This journey has ended' : 'Active right now',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                  ),
+                ],
               ),
+              _isJourneyPast
+                  ? _buildPastBadge()
+                  : _buildInProgressBadge(),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
           if (_isLoading)
-            const Center(child: CircularProgressIndicator())
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 24.0),
+                child: CircularProgressIndicator(),
+              ),
+            )
           else if (_tickets.isEmpty)
-            const Center(child: Text('No tickets yet for this journey'))
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24.0),
+                child: Text(
+                  'No tickets yet for this journey',
+                  style: TextStyle(color: Colors.grey[500]),
+                ),
+              ),
+            )
           else
             ..._buildSegments(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInProgressBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF27121),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFF27121).withValues(alpha: 0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: const Text(
+        'IN PROGRESS',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPastBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle_outline, size: 13, color: Colors.grey[500]),
+          const SizedBox(width: 5),
+          Text(
+            'COMPLETED',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
         ],
       ),
     );
@@ -73,16 +195,22 @@ class _CurrentJourneyCardState extends State<CurrentJourneyCard> {
 
     for (int i = 0; i < ticketCount; i++) {
       final ticket = _tickets[i];
-      final departure = DateTime.parse(ticket['departure']);
-      final origin = ticket['origin'] ?? '?';
-      final departureTime = '${departure.hour.toString().padLeft(2, '0')}:${departure.minute.toString().padLeft(2, '0')}';
-      
-      // Determine segment status
-      final bool isPassed = now.isAfter(departure);
-      // Active segment is the first upcoming segment (or the one currently in progress)
-      final bool isActive = !isPassed && (i == 0 || now.isAfter(DateTime.parse(_tickets[i-1]['departure'])));
+      DateTime? departure;
+      try {
+        departure = ticket['departure'] != null ? DateTime.parse(ticket['departure']) : null;
+      } catch (_) {}
 
-      // Add the departure segment (origin)
+      final origin = ticket['origin'] ?? '?';
+      final departureTime = departure != null
+          ? DateFormat('HH:mm').format(departure)
+          : '--:--';
+
+      final bool isPassed = departure != null && now.isAfter(departure);
+      final bool isActive = !isPassed &&
+          (i == 0 ||
+              (_tickets[i - 1]['departure'] != null &&
+                  now.isAfter(DateTime.parse(_tickets[i - 1]['departure']))));
+
       widgets.add(
         TimelineSegment(
           location: origin,
@@ -94,20 +222,20 @@ class _CurrentJourneyCardState extends State<CurrentJourneyCard> {
         ),
       );
 
-      // If this is the last ticket, also add a final destination segment (arrival)
+      // If last ticket, add the final destination segment
       if (i == ticketCount - 1) {
-        final arrival = ticket['arrival'] != null
-            ? DateTime.parse(ticket['arrival'])
-            : null;
-        final arrivalTime = arrival != null
-            ? '${arrival.hour.toString().padLeft(2, '0')}:${arrival.minute.toString().padLeft(2, '0')}'
-            : '';
+        DateTime? arrival;
+        try {
+          arrival = ticket['arrival'] != null ? DateTime.parse(ticket['arrival']) : null;
+        } catch (_) {}
+
+        final arrivalTime = arrival != null ? DateFormat('HH:mm').format(arrival) : '';
         widgets.add(
           TimelineSegment(
             location: ticket['destination'] ?? '?',
             time: arrivalTime,
             icon: Icons.location_on,
-            isPassed: arrival != null ? now.isAfter(arrival) : false,
+            isPassed: arrival != null ? now.isAfter(arrival) : _isJourneyPast,
             isActive: false,
             isLast: true,
           ),
@@ -119,9 +247,17 @@ class _CurrentJourneyCardState extends State<CurrentJourneyCard> {
 
   IconData _getIconForCarrier(String carrier) {
     final lower = carrier.toLowerCase();
-    if (lower.contains('train') || lower.contains('sgr')) return Icons.train;
-    if (lower.contains('flight') || lower.contains('airline') || lower.contains('jambojet') || lower.contains('safarilink')) return Icons.flight;
-    if (lower.contains('bus')) return Icons.directions_bus;
+    if (lower.contains('train') || lower.contains('sgr') || lower.contains('madaraka')) {
+      return Icons.train;
+    }
+    if (lower.contains('flight') || lower.contains('airline') ||
+        lower.contains('jambojet') || lower.contains('safarilink') ||
+        lower.contains('kenya airways')) {
+      return Icons.flight;
+    }
+    if (lower.contains('bus') || lower.contains('coast') || lower.contains('mash')) {
+      return Icons.directions_bus;
+    }
     return Icons.directions_transit;
   }
 }

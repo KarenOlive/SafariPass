@@ -1,7 +1,9 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'package:uuid/uuid.dart'; 
+import 'package:uuid/uuid.dart';
+import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'notification_service.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -128,6 +130,11 @@ class DatabaseHelper {
   // Helper to get current timestamp
   String _now() => DateTime.now().toIso8601String();
 
+  // Helper to hash phone numbers for privacy
+  static String _hashPhoneNumber(String phoneNumber) {
+    return sha256.convert(phoneNumber.trim().codeUnits).toString();
+  }
+
 
   // Handle database upgrades (e.g., adding new columns or tables)
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -178,6 +185,7 @@ class DatabaseHelper {
 
   /// Creates or updates a user record using the Firebase user ID.
 /// If the user already exists (by user_id), it updates name and phone number.
+/// Phone numbers are hashed using SHA256 for privacy before storing.
 /// If not, it inserts a new record.
 /// After any change, `isSynced` is set to 0 to trigger cloud sync.
 Future<void> createOrUpdateFirebaseUser({
@@ -192,11 +200,17 @@ Future<void> createOrUpdateFirebaseUser({
     whereArgs: [userId],
   );
   final now = _now();
+
+  // Hash phone number if provided
+  final phoneHash = phoneNumber != null && phoneNumber.isNotEmpty
+    ? _hashPhoneNumber(phoneNumber)
+    : '';
+
   if (existing.isEmpty) {
     await db.insert('user', {
       'user_id': userId,
       'name': name ?? '',
-      'phone_hash': phoneNumber ?? '',
+      'phone_hash': phoneHash,
       'created_at': now,
       'last_modified': now,
       'isSynced': 0,
@@ -207,7 +221,7 @@ Future<void> createOrUpdateFirebaseUser({
       'isSynced': 0,
     };
     if (name != null) updateData['name'] = name;
-    if (phoneNumber != null) updateData['phone_hash'] = phoneNumber;
+    if (phoneNumber != null) updateData['phone_hash'] = phoneHash;
     await db.update(
       'user',
       updateData,
@@ -227,14 +241,45 @@ Future<Map<String, dynamic>?> getCurrentFirebaseUser() async {
 
   /// Returns the ID of the first user, or creates a default user if none exist.
   Future<String> getOrCreateDefaultUserId() async {
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+
+    if (firebaseUser != null) {
+      await createOrUpdateFirebaseUser(
+        userId: firebaseUser.uid,
+        name: firebaseUser.displayName,
+        phoneNumber: firebaseUser.phoneNumber,
+      );
+      return firebaseUser.uid;
+    }
+
     final db = await instance.database;
     final List<Map<String, dynamic>> users = await db.query('user', limit: 1);
     if (users.isNotEmpty) {
       return users.first['user_id'] as String;
     }
-    // Create a default user
+
     return createUser(name: 'Default User');
   }
+
+  Future<List<Map<String, dynamic>>> getUnsyncedUsers() async {
+  final db = await instance.database;
+  return await db.query(
+    'user',
+    where: 'isSynced = ?',
+    whereArgs: [0],
+    orderBy: 'last_modified ASC',
+  );
+}
+
+Future<int> markUserAsSynced(String userId) async {
+  final db = await instance.database;
+  return await db.update(
+    'user',
+    {'isSynced': 1},
+    where: 'user_id = ?',
+    whereArgs: [userId],
+  );
+}
 
   // ==================== Journey operations ====================
 
@@ -333,7 +378,7 @@ Future<List<Map<String, dynamic>>> getAllJourneysWithStatus(String userID) async
     final db = await instance.database;
     return await db.update(
       'journey',
-      {'status': status},
+      {'status': status, 'last_modified': _now(), 'isSynced': 0},
       where: 'journey_id = ?',
       whereArgs: [journeyID],
     );
@@ -397,6 +442,16 @@ Future<List<Map<String, dynamic>>> getAllJourneysWithStatus(String userID) async
       'last_modified': now,
       'isSynced': 0,
     });
+    
+    // Recalculate journey dates
+    await updateJourneyDatesFromTickets(journeyID);
+    
+    // Schedule notifications for the new ticket
+    final newTicket = await getTicket(ticketID);
+    if (newTicket != null) {
+      await NotificationService().scheduleTicketNotifications(newTicket);
+    }
+
     return ticketID;
   }
 
@@ -474,29 +529,94 @@ Future<List<Map<String, dynamic>>> getAllJourneysWithStatus(String userID) async
     final db = await instance.database;
     return await db.update(
       'ticket',
-      {'confidence_score': confidence},
+      {'confidence_score': confidence, 'last_modified': _now(), 'isSynced': 0},
       where: 'ticket_id = ?',
       whereArgs: [ticketID],
     );
   }
 
   Future<int> updateTicketStatus(String ticketID, String newStatus) async {
+    final ticket = await getTicket(ticketID);
+    if (ticket == null) return 0;
+    final journeyId = ticket['journey_id'] as String;
+
     final db = await instance.database;
-    return await db.update(
+    final result = await db.update(
       'ticket',
-      {'status': newStatus},
+      {'status': newStatus, 'last_modified': _now(), 'isSynced': 0},
       where: 'ticket_id = ?',
       whereArgs: [ticketID],
     );
+
+    await updateJourneyDatesFromTickets(journeyId);
+    
+    if (newStatus.toLowerCase() == 'cancelled') {
+        await NotificationService().cancelTicketNotifications(ticketID);
+    } else {
+        await NotificationService().scheduleTicketNotifications(ticket);
+    }
+    
+    return result;
   }
 
   Future<int> deleteTicket(String ticketID) async {
+    final ticket = await getTicket(ticketID);
+    if (ticket == null) return 0;
+    final journeyId = ticket['journey_id'] as String;
+
     final db = await instance.database;
-    return await db.delete(
+    final result = await db.delete(
       'ticket',
       where: 'ticket_id = ?',
       whereArgs: [ticketID],
     );
+
+    await updateJourneyDatesFromTickets(journeyId);
+    await NotificationService().cancelTicketNotifications(ticketID);
+    
+    return result;
+  }
+
+  // Recalculate journey dates based on its tickets
+  Future<void> updateJourneyDatesFromTickets(String journeyId) async {
+    final tickets = await getTicketsForJourney(journeyId);
+    if (tickets.isEmpty) return;
+
+    DateTime? minDeparture;
+    DateTime? maxArrival;
+
+    for (var ticket in tickets) {
+      final depStr = ticket['departure'] as String?;
+      final arrStr = ticket['arrival'] as String?;
+
+      if (depStr != null) {
+        final dep = DateTime.parse(depStr);
+        if (minDeparture == null || dep.isBefore(minDeparture)) {
+          minDeparture = dep;
+        }
+
+        // Use departure as fallback for arrival if arrival is null
+        final arr = arrStr != null ? DateTime.parse(arrStr) : dep;
+        if (maxArrival == null || arr.isAfter(maxArrival)) {
+          maxArrival = arr;
+        }
+      }
+    }
+
+    if (minDeparture != null && maxArrival != null) {
+      final db = await instance.database;
+      await db.update(
+        'journey',
+        {
+          'start_date': minDeparture.toIso8601String(),
+          'end_date': maxArrival.toIso8601String(),
+          'last_modified': _now(),
+          'isSynced': 0,
+        },
+        where: 'journey_id = ?',
+        whereArgs: [journeyId],
+      );
+    }
   }
 
   // ==================== Connection operations ====================
@@ -593,7 +713,15 @@ Future<List<Map<String, dynamic>>> getAllJourneysWithStatus(String userID) async
       orderBy: 'queued_at ASC',
     );
   }
-
+  Future<List<Map<String, dynamic>>> getUnsyncedAiQueue() async {
+  final db = await instance.database;
+  return await db.query(
+    'ai_processing_queue',
+    where: 'isSynced = ?',
+    whereArgs: [0],
+    orderBy: 'last_modified ASC',
+  );
+}
   Future<int> updateAITaskResult(String queueID, {
     required String status, // 'completed' or 'failed'
     String? resultJson,
@@ -606,13 +734,68 @@ Future<List<Map<String, dynamic>>> getAllJourneysWithStatus(String userID) async
         'status': status,
         'processed_at': now,
         'result_json': resultJson,
+        'last_modified': now,
+        'isSynced': 0,
       },
       where: 'queue_id = ?',
       whereArgs: [queueID],
     );
   }
+  Future<int> markAiQueueAsSynced(String queueID) async {
+  final db = await instance.database;
+  return await db.update(
+    'ai_processing_queue',
+    {'isSynced': 1},
+    where: 'queue_id = ?',
+    whereArgs: [queueID],
+  );
+}
+  // ==================== Travel Stats operations ====================
 
-  // ==================== General helpers ====================
+  Future<Map<String, dynamic>> getTravelStats(String userID) async {
+    final db = await instance.database;
+    
+    // Total Tickets
+    final totalTickets = Sqflite.firstIntValue(await db.rawQuery(
+      'SELECT COUNT(*) FROM ticket t JOIN journey j ON t.journey_id = j.journey_id WHERE j.user_id = ?',
+      [userID]
+    )) ?? 0;
+
+    // Unique Destinations
+    final uniqueDestinations = Sqflite.firstIntValue(await db.rawQuery(
+      'SELECT COUNT(DISTINCT destination) FROM ticket t JOIN journey j ON t.journey_id = j.journey_id WHERE j.user_id = ?',
+      [userID]
+    )) ?? 0;
+
+    // Carrier Distribution (Top 5)
+    final carrierResults = await db.rawQuery('''
+      SELECT carrier, COUNT(*) as count 
+      FROM ticket t 
+      JOIN journey j ON t.journey_id = j.journey_id 
+      WHERE j.user_id = ? 
+      GROUP BY carrier 
+      ORDER BY count DESC 
+      LIMIT 5
+    ''', [userID]);
+
+    // Monthly Distribution (Last 6 months)
+    final monthlyResults = await db.rawQuery('''
+      SELECT strftime('%Y-%m', departure) as month, COUNT(*) as count 
+      FROM ticket t 
+      JOIN journey j ON t.journey_id = j.journey_id 
+      WHERE j.user_id = ? 
+      GROUP BY month 
+      ORDER BY month DESC 
+      LIMIT 6
+    ''', [userID]);
+
+    return {
+      'total_tickets': totalTickets,
+      'unique_destinations': uniqueDestinations,
+      'carriers': carrierResults,
+      'monthly': monthlyResults.reversed.toList(),
+    };
+  }
 
   // Close the database (useful for testing)
   Future close() async {

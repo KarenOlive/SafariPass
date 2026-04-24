@@ -33,7 +33,7 @@ class SMSConsentModal extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: const BoxDecoration(
-                  color: Color(0xFF1A237E),
+                  color: Color(0xFF1A2151),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.message, color: Colors.white, size: 24),
@@ -44,7 +44,7 @@ class SMSConsentModal extends StatelessWidget {
                 children: const [
                   Text(
                     'Import Ticket from SMS',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF1A237E)),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF1A2151)),
                   ),
                   Text(
                     'SafariPass detected a ticket',
@@ -71,7 +71,7 @@ class SMSConsentModal extends StatelessWidget {
                 Row(
                   children: [
                     const Text('FROM: ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF455A64))),
-                    Text(from, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1A237E))),
+                    Text(from, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1A2151))),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -94,12 +94,12 @@ class SMSConsentModal extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [
-                Icon(Icons.info_outline, color: Color(0xFF1A237E), size: 20),
+                Icon(Icons.info_outline, color: Color(0xFF1A2151), size: 20),
                 SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     'SafariTravel will automatically import ticket details from this message. Your SMS data stays private and is processed locally.',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF1A237E), height: 1.4),
+                    style: TextStyle(fontSize: 12, color: Color(0xFF1A2151), height: 1.4),
                   ),
                 ),
               ],

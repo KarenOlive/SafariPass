@@ -1,9 +1,14 @@
-import 'package:flutter/material.dart';
+import 'dart:ui'; import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../services/auth_service.dart';
 import '../services/database_helper.dart';
 import 'name_input_screen.dart';
 import 'main_layout.dart';
+
+// SafariPass Palette Constants
+const Color _deepCharcoal = Color(0xFF1A2151);
+const Color _savannahGold = Color(0xFFF27121);
 
 class PhoneAuthScreen extends StatefulWidget {
   const PhoneAuthScreen({super.key});
@@ -36,7 +41,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     await _auth.verifyPhoneNumber(
       phoneNumber: _phoneController.text.trim(),
       onVerificationCompleted: (PhoneAuthCredential credential) async {
-        // Auto‑verification (e.g., SIM card detection)
         final userCred = await _auth.signInWithCredential(credential);
         await _handleSignIn(userCred.user);
       },
@@ -51,9 +55,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           _isLoading = false;
         });
       },
-      onCodeAutoRetrievalTimeout: (String verificationId) {
-        // Optional: handle timeout
-      },
+      onCodeAutoRetrievalTimeout: (String verificationId) {},
     );
   }
 
@@ -105,53 +107,153 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   void _showError(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Colors.red),
+      SnackBar(
+        content: Text(msg, style: const TextStyle(color: Colors.white)),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  InputDecoration _customInputDecoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: Colors.grey.shade600),
+      prefixIcon: Icon(icon, color: _savannahGold),
+      filled: true,
+      fillColor: Colors.grey.shade100,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _savannahGold, width: 1.5),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Sign In with Phone')),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
+      backgroundColor: _deepCharcoal,
+      body: SafeArea(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (!_isCodeSent) ...[
-              TextField(
-                controller: _phoneController,
-                decoration: const InputDecoration(
-                  labelText: 'Phone number (+254...)',
-                  prefixIcon: Icon(Icons.phone),
+            // Top Section
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(LucideIcons.planeTakeoff, color: Colors.white, size: 48),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text('SafariTravel', style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text('Your journey, simplified', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 16)),
+                  ],
                 ),
-                keyboardType: TextInputType.phone,
               ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _sendCode,
-                child: const Text('Send Code'),
-              ),
-            ] else ...[
-              TextField(
-                controller: _codeController,
-                decoration: const InputDecoration(
-                  labelText: '6-digit code',
-                  prefixIcon: Icon(Icons.sms),
+            ),
+            
+            // White Bottom Card
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(32),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(32),
+                  topRight: Radius.circular(32),
                 ),
-                keyboardType: TextInputType.number,
               ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _verifyCode,
-                child: const Text('Verify & Sign In'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _isCodeSent ? 'Verify Number' : 'Welcome!',
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: _deepCharcoal,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _isCodeSent 
+                        ? 'Enter the 6-digit code sent to your phone.' 
+                        : 'Enter your phone number to get started',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                  ),
+                  const SizedBox(height: 32),
+                  if (!_isCodeSent) ...[
+                    TextField(
+                      controller: _phoneController,
+                      style: const TextStyle(color: _deepCharcoal),
+                      decoration: _customInputDecoration('Phone Number', LucideIcons.phone),
+                      keyboardType: TextInputType.phone,
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _savannahGold,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
+                        ),
+                        onPressed: _isLoading ? null : _sendCode,
+                        child: _isLoading
+                            ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text('Continue', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ] else ...[
+                    TextField(
+                      controller: _codeController,
+                      style: const TextStyle(color: _deepCharcoal),
+                      decoration: _customInputDecoration('6-digit code', LucideIcons.messageSquare),
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _savannahGold,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
+                        ),
+                        onPressed: _isLoading ? null : _verifyCode,
+                        child: _isLoading
+                            ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text('Verify & Sign In', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-            ],
-            if (_isLoading)
-              const Padding(
-                padding: EdgeInsets.only(top: 16),
-                child: CircularProgressIndicator(),
-              ),
+            ),
           ],
         ),
       ),

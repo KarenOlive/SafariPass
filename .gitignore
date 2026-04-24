@@ -18,7 +18,8 @@ functions/node_modules/
 # Envied files
 .env
 *.env
-**/env.g.dart   # if you want to ignore the generated file (optional)
+lib/env/env.dart 
+lib/env/env.g.dart
 functions/.env
 
 # IntelliJ related

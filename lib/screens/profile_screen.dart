@@ -1,6 +1,11 @@
 // lib/screens/profile_screen.dart
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/auth_service.dart';
 import 'journey_suggestions_screen.dart';
+import 'phone_auth_screen.dart';
+import 'travel_stats_screen.dart';
+import 'app_settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -32,7 +37,7 @@ class ProfileScreen extends StatelessWidget {
             title: 'Travel Stats',
             subtitle: 'View your distance and savings',
             color: Colors.blue,
-            onTap: () {}, // To be implemented
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TravelStatsScreen())),
           ),
           _buildMenuTile(
             context,
@@ -40,7 +45,24 @@ class ProfileScreen extends StatelessWidget {
             title: 'App Settings',
             subtitle: 'Privacy, Notifications, Theme',
             color: Colors.grey,
-            onTap: () {}, // To be implemented
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AppSettingsScreen())),
+          ),
+          _buildMenuTile(
+            context,
+            icon: Icons.logout,
+            title: 'Logout',
+            subtitle: 'Sign out of your account',
+            color: Colors.red,
+            onTap: () async {
+              await AuthService().signOut();
+              if (context.mounted) {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (context) => const PhoneAuthScreen()),
+                  (route) => false,
+                );
+              }
+            },
           ),
         ],
       ),

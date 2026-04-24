@@ -47,7 +47,7 @@ class CustomBottomNav extends StatelessWidget {
   }
 
   Widget _buildNavItem({required IconData icon, required String label, required int index, required bool isActive}) {
-    final color = isActive ? const Color(0xFF1A237E) : const Color(0xFF455A64);
+    final color = isActive ? const Color(0xFF1A2151) : const Color(0xFF455A64);
     return GestureDetector(
       onTap: () => onTabChanged(index),
       behavior: HitTestBehavior.opaque,
@@ -68,10 +68,10 @@ class CustomBottomNav extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFFF6D00),
+          color: const Color(0xFFF27121),
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
-            BoxShadow(color: const Color(0xFFFF6D00).withAlpha(0x66), blurRadius: 8, offset: const Offset(0, 4)),
+            BoxShadow(color: const Color(0xFFF27121).withAlpha(0x66), blurRadius: 8, offset: const Offset(0, 4)),
           ],
         ),
         child: Column(

@@ -7,6 +7,9 @@ abstract class Env {
   @EnviedField(varName: 'GEMINI_API_KEY')
   static final String geminiApiKey = _Env.geminiApiKey;
 
+  @EnviedField(varName: 'GROQ_API_KEY')
+  static final String groqApiKey = _Env.groqApiKey;
+
   // Future environment variables can be added here, e.g.:
   @EnviedField(varName: 'AVIATION_STACK_API_KEY')
   static final String aviationStackApiKey = _Env.aviationStackApiKey;

@@ -27,7 +27,7 @@ class BoardingPassCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF1A237E), width: 2),
+        border: Border.all(color: const Color(0xFF1A2151), width: 2),
         boxShadow: isHighBrightness 
             ? [const BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, 8))]
             : [const BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
@@ -38,7 +38,7 @@ class BoardingPassCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             decoration: const BoxDecoration(
-              color: Color(0xFF1A237E),
+              color: Color(0xFF1A2151),
               borderRadius: BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
             ),
             child: Row(
@@ -72,7 +72,7 @@ class BoardingPassCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text('FROM', style: TextStyle(fontSize: 12, color: Color(0xFF455A64))),
-                    Text(ticket['origin'] ?? '', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1A237E))),
+                    Text(ticket['origin'] ?? '', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1A2151))),
                   ],
                 ),
                 Icon(_getIcon(), color: const Color(0xFF455A64)),
@@ -80,7 +80,7 @@ class BoardingPassCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     const Text('TO', style: TextStyle(fontSize: 12, color: Color(0xFF455A64))),
-                    Text(ticket['destination'] ?? '', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1A237E))),
+                    Text(ticket['destination'] ?? '', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1A2151))),
                   ],
                 ),
               ],
@@ -106,30 +106,30 @@ class BoardingPassCard extends StatelessWidget {
           const Divider(height: 1, thickness: 2, color: Color(0xFFE0E0E0), indent: 24, endIndent: 24),
 
           // QR Code Section
-          Padding(
-            padding: const EdgeInsets.all(32.0),
-            child: Column(
-              children: [
-                const Text('Scan at Gate', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1A237E), fontSize: 16)),
-                const SizedBox(height: 4),
-                const Text('Present this QR code for boarding', style: TextStyle(fontSize: 12, color: Color(0xFF455A64))),
-                const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [BoxShadow(color: Colors.black.withAlpha(isHighBrightness ? 0x33 : 0x0D), blurRadius: 10)],
-                  ),
-                  child: QrImageView(
-                    data: qrData,
-                    version: QrVersions.auto,
-                    size: 200.0,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // Padding(
+          //   padding: const EdgeInsets.all(32.0),
+          //   child: Column(
+          //     children: [
+          //       const Text('Scan at Gate', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1A2151), fontSize: 16)),
+          //       const SizedBox(height: 4),
+          //       const Text('Present this QR code for boarding', style: TextStyle(fontSize: 12, color: Color(0xFF455A64))),
+          //       const SizedBox(height: 24),
+          //       Container(
+          //         padding: const EdgeInsets.all(16),
+          //         decoration: BoxDecoration(
+          //           color: Colors.white,
+          //           borderRadius: BorderRadius.circular(16),
+          //           boxShadow: [BoxShadow(color: Colors.black.withAlpha(isHighBrightness ? 0x33 : 0x0D), blurRadius: 10)],
+          //         ),
+          //         child: QrImageView(
+          //           data: qrData,
+          //           version: QrVersions.auto,
+          //           size: 200.0,
+          //         ),
+          //       ),
+          //     ],
+          //   ),
+          // ),
         ],
       ),
     );
@@ -150,7 +150,7 @@ class BoardingPassCard extends StatelessWidget {
         Text(value, style: TextStyle(
           fontWeight: FontWeight.bold, 
           fontSize: isHighlight ? 20 : 16, 
-          color: isHighlight ? const Color(0xFFFF6D00) : const Color(0xFF1A237E)
+          color: isHighlight ? const Color(0xFFF27121) : const Color(0xFF1A2151)
         )),
       ],
     );

@@ -12,6 +12,7 @@ dependencies:
   firebase_core: ^4.4.0
   google_generative_ai: ^0.4.7
   cloud_firestore: ^6.1.2
+  crypto: ^3.0.3
   sqflite: ^2.4.2
   path: ^1.9.1
   image_picker: ^1.2.1
@@ -28,7 +29,13 @@ dependencies:
   shared_preferences: ^2.5.4
   permission_handler: ^12.0.1
   http: ^1.6.0
-  
+  lucide_icons: ^0.257.0
+  collection: ^1.19.1
+  google_mlkit_text_recognition: ^0.15.1
+  flutter_local_notifications: ^21.0.0
+  timezone: ^0.11.0
+  file_picker: ^8.0.0
+
 
 dev_dependencies:
   flutter_test:

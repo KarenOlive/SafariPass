@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../services/gemini_service.dart';
 import '../services/database_helper.dart';
+import '../services/sync_service.dart';
 import '../widgets/journey_selector_bottom_sheet.dart';
 
 class ScannerScreen extends StatefulWidget {
@@ -13,7 +17,7 @@ class ScannerScreen extends StatefulWidget {
   State<ScannerScreen> createState() => _ScannerScreenState();
 }
 
-// Added SingleTickerProviderStateMixin for the scanning animation
+// Added Single TickerProviderStateMixin for the scanning animation
 class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProviderStateMixin {
   bool _isLoading = false;
   final _picker = ImagePicker();
@@ -46,30 +50,42 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
 
     setState(() => _isLoading = true);
     _animationController.repeat(reverse: true); // Start the scanner animation
+    // ignore: use_build_context_synchronously
+    final canPopBefore = Navigator.canPop(context);
 
     try {
-      final bytes = await image.readAsBytes();
-      final mimeType = _getMimeType(image.path);
+      // Extract text locally using ML Kit
+      final inputImage = InputImage.fromFilePath(image.path);
+      final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+      final String extractedText = recognizedText.text;
+      await textRecognizer.close();
 
-      // 1. Send to Gemini AI for parsing
-      final ticketData = await GeminiService.parseTicket(
-        imageBytes: bytes,
-        mimeType: mimeType,
-      );
+      if (extractedText.trim().isEmpty) {
+        _animationController.stop();
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+        _showError('No text found in the image. Please try a clearer picture.');
+        return;
+      }
 
-      if (ticketData == null) {
+      // 1. Send extracted text to Gemini Text API for structured JSON parsing
+      final ticketDataList = await GeminiService.parseTicketFromText(extractedText);
+
+      if (ticketDataList == null || ticketDataList.isEmpty) {
         _showError('Could not extract ticket data. Please try again or enter manually.');
         return;
       }
 
-      // 2. Determine which journey to associate the ticket with
+      // 2. Determine which journey to associate the ticket(s) with
       String? targetJourneyId = widget.journeyId;
 
       if (targetJourneyId == null) {
         final userId = await DatabaseHelper.instance.getOrCreateDefaultUserId();
-        // Stop animation while waiting for user input on the bottom sheet
-        _animationController.stop(); 
-        
+        _animationController.stop();
+        if (!mounted) return;
+        // ignore: use_build_context_synchronously
         targetJourneyId = await showJourneySelector(context, userId);
         if (targetJourneyId == null) {
           _showMessage('Ticket not saved. No journey selected.');
@@ -78,23 +94,109 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
         _animationController.repeat(reverse: true);
       }
 
-      // 3. Prepare the ticket map for database insertion
-      final ticketMap = ticketData.toMap();
-      ticketMap['journey_id'] = targetJourneyId;
-      ticketMap['source_type'] = source == ImageSource.camera ? 'camera' : 'gallery';
-      ticketMap['image_path'] = image.path;
-      ticketMap['isSynced'] = 0;
-      ticketMap['last_modified'] = DateTime.now().toIso8601String();
+      // 3. Save each extracted segment as a separate ticket under the same journey
+      for (final ticketData in ticketDataList) {
+        final ticketMap = ticketData.toMap();
+        ticketMap['journey_id'] = targetJourneyId;
+        ticketMap['source_type'] = source == ImageSource.camera ? 'camera' : 'gallery';
+        ticketMap['image_path'] = image.path;
+        ticketMap['isSynced'] = 0;
+        ticketMap['last_modified'] = DateTime.now().toIso8601String();
+        await DatabaseHelper.instance.createTicketFromMap(ticketMap);
+      }
 
-      // 4. Save to local SQLite
-      await DatabaseHelper.instance.createTicketFromMap(ticketMap);
+      final segmentCount = ticketDataList.length;
+      _showMessage('✅ $segmentCount trip${segmentCount > 1 ? 's' : ''} imported successfully!');
+
+      // Trigger automatic cloud sync immediately after local save finishes
+      await SyncService().syncUnsyncedRecords();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Ticket imported successfully!'), backgroundColor: Colors.green),
-        );
-        // Only pop if there is a screen to pop back to (handles BottomNav vs direct navigation)
-        if (Navigator.canPop(context)) {
+        if (canPopBefore) {
+          Navigator.pop(context);
+        }
+      }
+    } catch (e) {
+      _showError('Error: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _animationController.stop();
+        _animationController.reset();
+      }
+    }
+  }
+
+  Future<void> _pickAndProcessPDF() async {
+    final FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf'],
+      withData: true,
+    );
+
+    if (result == null || result.files.isEmpty) return;
+
+    final file = result.files.first;
+    final filePath = file.path;
+    final fileBytes = file.bytes;
+
+    if (filePath == null || fileBytes == null) {
+      _showError('Could not read PDF file.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    _animationController.repeat(reverse: true);
+    // ignore: use_build_context_synchronously
+    final canPopBefore = Navigator.canPop(context);
+
+    try {
+      // Send PDF directly to Gemini API
+      final ticketDataList = await GeminiService.parseTicket(
+        imageBytes: fileBytes,
+        mimeType: 'application/pdf',
+      );
+
+      if (ticketDataList == null || ticketDataList.isEmpty) {
+        _showError('Could not extract ticket data from PDF. Please try again.');
+        return;
+      }
+
+      // Determine which journey to associate the ticket(s) with
+      String? targetJourneyId = widget.journeyId;
+
+      if (targetJourneyId == null) {
+        final userId = await DatabaseHelper.instance.getOrCreateDefaultUserId();
+        _animationController.stop();
+        if (!mounted) return;
+        // ignore: use_build_context_synchronously
+        targetJourneyId = await showJourneySelector(context, userId);
+        if (targetJourneyId == null) {
+          _showMessage('Ticket not saved. No journey selected.');
+          return;
+        }
+        _animationController.repeat(reverse: true);
+      }
+
+      // Save each extracted segment as a separate ticket
+      for (final ticketData in ticketDataList) {
+        final ticketMap = ticketData.toMap();
+        ticketMap['journey_id'] = targetJourneyId;
+        ticketMap['source_type'] = 'pdf';
+        ticketMap['image_path'] = filePath;
+        ticketMap['isSynced'] = 0;
+        ticketMap['last_modified'] = DateTime.now().toIso8601String();
+        await DatabaseHelper.instance.createTicketFromMap(ticketMap);
+      }
+
+      final segmentCount = ticketDataList.length;
+      _showMessage('✅ $segmentCount trip${segmentCount > 1 ? 's' : ''} imported from PDF!');
+
+      // Trigger automatic cloud sync
+      await SyncService().syncUnsyncedRecords();
+
+      if (mounted) {
+        if (canPopBefore) {
           Navigator.pop(context);
         }
       }
@@ -112,6 +214,9 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
   String _getMimeType(String path) {
     if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
     if (path.endsWith('.png')) return 'image/png';
+    if (path.endsWith('.pdf')) return 'application/pdf';
+    if (path.endsWith('.gif')) return 'image/gif';
+    if (path.endsWith('.webp')) return 'image/webp';
     return 'application/octet-stream';
   }
 
@@ -196,10 +301,10 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                   ),
 
                   // Corner Markers
-                  _buildCornerMarker(Alignment.topLeft, const Border(top: BorderSide(color: Color(0xFFFF6D00), width: 4), left: BorderSide(color: Color(0xFFFF6D00), width: 4))),
-                  _buildCornerMarker(Alignment.topRight, const Border(top: BorderSide(color: Color(0xFFFF6D00), width: 4), right: BorderSide(color: Color(0xFFFF6D00), width: 4))),
-                  _buildCornerMarker(Alignment.bottomLeft, const Border(bottom: BorderSide(color: Color(0xFFFF6D00), width: 4), left: BorderSide(color: Color(0xFFFF6D00), width: 4))),
-                  _buildCornerMarker(Alignment.bottomRight, const Border(bottom: BorderSide(color: Color(0xFFFF6D00), width: 4), right: BorderSide(color: Color(0xFFFF6D00), width: 4))),
+                  _buildCornerMarker(Alignment.topLeft, const Border(top: BorderSide(color: Color(0xFFF27121), width: 4), left: BorderSide(color: Color(0xFFF27121), width: 4))),
+                  _buildCornerMarker(Alignment.topRight, const Border(top: BorderSide(color: Color(0xFFF27121), width: 4), right: BorderSide(color: Color(0xFFF27121), width: 4))),
+                  _buildCornerMarker(Alignment.bottomLeft, const Border(bottom: BorderSide(color: Color(0xFFF27121), width: 4), left: BorderSide(color: Color(0xFFF27121), width: 4))),
+                  _buildCornerMarker(Alignment.bottomRight, const Border(bottom: BorderSide(color: Color(0xFFF27121), width: 4), right: BorderSide(color: Color(0xFFF27121), width: 4))),
 
                   // Animated Scanning Line (Visible when loading)
                   if (_isLoading)
@@ -212,8 +317,8 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                           child: Container(
                             height: 4,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFF6D00),
-                              boxShadow: [BoxShadow(color: const Color(0xFFFF6D00).withAlpha(150), blurRadius: 20, spreadRadius: 2)],
+                              color: const Color(0xFFF27121),
+                              boxShadow: [BoxShadow(color: const Color(0xFFF27121).withAlpha(150), blurRadius: 20, spreadRadius: 2)],
                             ),
                           ),
                         );
@@ -240,7 +345,7 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Upload Gallery Button
+                      // Upload Image Button
                       GestureDetector(
                         onTap: _isLoading ? null : () => _pickAndProcessImage(ImageSource.gallery),
                         child: Column(
@@ -248,15 +353,15 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                             Container(
                               width: 64, height: 64,
                               decoration: BoxDecoration(color: Colors.white.withAlpha(50), shape: BoxShape.circle),
-                              child: const Icon(Icons.upload_file, color: Colors.white, size: 28),
+                              child: const Icon(Icons.image, color: Colors.white, size: 28),
                             ),
                             const SizedBox(height: 8),
-                            const Text('Upload', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            const Text('Image', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 48),
-                      
+                      const SizedBox(width: 24),
+
                       // Capture Camera Button
                       GestureDetector(
                         onTap: _isLoading ? null : () => _pickAndProcessImage(ImageSource.camera),
@@ -265,11 +370,11 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                             Container(
                               width: 80, height: 80,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFF6D00), 
+                                color: const Color(0xFFF27121),
                                 shape: BoxShape.circle,
-                                boxShadow: [BoxShadow(color: const Color(0xFFFF6D00).withAlpha(128), blurRadius: 20)],
+                                boxShadow: [BoxShadow(color: const Color(0xFFF27121).withAlpha(128), blurRadius: 20)],
                               ),
-                              child: _isLoading 
+                              child: _isLoading
                                   ? const CircularProgressIndicator(color: Colors.white)
                                   : const Icon(Icons.camera_alt, color: Colors.white, size: 36),
                             ),
@@ -278,10 +383,23 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                           ],
                         ),
                       ),
-                      const SizedBox(width: 48),
-                      
-                      // Empty placeholder to balance the row symmetrically
-                      const SizedBox(width: 64), 
+                      const SizedBox(width: 24),
+
+                      // Upload PDF Button
+                      GestureDetector(
+                        onTap: _isLoading ? null : _pickAndProcessPDF,
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 64, height: 64,
+                              decoration: BoxDecoration(color: Colors.white.withAlpha(50), shape: BoxShape.circle),
+                              child: const Icon(Icons.description, color: Colors.white, size: 28),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text('PDF', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 32),
@@ -291,7 +409,7 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(color: Colors.white.withAlpha(25), borderRadius: BorderRadius.circular(16)),
                     child: const Text(
-                      'Powered by Gemini AI\nAutomatically extracts ticket details from screenshots, PDFs, or photos',
+                      'Powered by Gemini AI\nAutomatically extracts ticket details from photos, PDFs, or screenshots',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.white, fontSize: 12, height: 1.5),
                     ),

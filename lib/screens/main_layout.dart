@@ -16,7 +16,7 @@ class _MainLayoutState extends State<MainLayout> {
 
   final List<Widget> _screens = [
     const TripsTimelineScreen(), // Index 0
-    const ScannerScreen(), // Index 1 – no journeyId passed; user selects journey after scan                     // Index 1
+    const ScannerScreen(), // Index 1 – no journeyId passed; user selects journey after scan
     const ProfileScreen(), // Index 2
   ];
 

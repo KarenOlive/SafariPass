@@ -20,33 +20,47 @@ class TimelineSegment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isPassed ? const Color(0xFF4CAF50) : isActive ? const Color(0xFFFF6D00) : Colors.grey.shade400;
+    final color = isPassed
+        ? const Color(0xFF4CAF50)
+        : isActive
+            ? const Color(0xFFF27121)
+            : Colors.grey.shade400;
+
+    final isUpcoming = !isPassed && !isActive;
 
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(
-            width: 32,
+            width: 36,
             child: Column(
               children: [
                 Container(
-                  width: 16,
-                  height: 16,
+                  width: 18,
+                  height: 18,
                   decoration: BoxDecoration(
-                    color: isPassed ? const Color(0xFF4CAF50) : isActive ? const Color(0xFFFF6D00) : Colors.white,
+                    color: isUpcoming ? Colors.white : color,
                     shape: BoxShape.circle,
-                    border: Border.all(
-                      color: isPassed ? const Color(0xFF4CAF50) : isActive ? const Color(0xFFFF6D00) : Colors.grey.shade300,
-                      width: 2,
-                    ),
+                    border: isUpcoming ? Border.all(color: color, width: 2) : null,
+                    boxShadow: isUpcoming ? [] : [
+                      BoxShadow(
+                        color: color.withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                      )
+                    ],
                   ),
                 ),
                 if (!isLast)
                   Expanded(
                     child: Container(
-                      width: 2,
-                      color: isPassed ? const Color(0xFF4CAF50) : isActive ? const Color(0xFFFF6D00) : Colors.grey.shade200,
+                      width: 3,
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
               ],
@@ -54,7 +68,7 @@ class TimelineSegment extends StatelessWidget {
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 28.0),
+              padding: const EdgeInsets.only(left: 16, bottom: 32),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -63,17 +77,38 @@ class TimelineSegment extends StatelessWidget {
                     child: Row(
                       children: [
                         Icon(icon, size: 18, color: color),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 10),
                         Expanded(
-                          child: Text(
-                            location,
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                              color: isPassed ? const Color(0xFF4CAF50) : isActive ? const Color(0xFF1A237E) : Colors.grey.shade500,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                location,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: isPassed
+                                      ? const Color(0xFF4CAF50)
+                                      : isActive
+                                          ? const Color(0xFF1A2151)
+                                          : Colors.grey.shade600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (isActive)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    'Now',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: const Color(0xFFF27121),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       ],
@@ -82,9 +117,10 @@ class TimelineSegment extends StatelessWidget {
                   Text(
                     time,
                     style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: isPassed ? const Color(0xFF4CAF50) : isActive ? const Color(0xFFFF6D00) : Colors.grey.shade400,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                      letterSpacing: -0.3,
                     ),
                   ),
                 ],

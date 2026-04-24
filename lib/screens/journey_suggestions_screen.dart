@@ -139,7 +139,7 @@ class _JourneySuggestionsScreenState extends State<JourneySuggestionsScreen> {
         iconTheme: const IconThemeData(color: Colors.white),
         flexibleSpace: Container(
           decoration: const BoxDecoration(
-            gradient: LinearGradient(colors: [Color(0xFF1A237E), Color(0xFF3949AB)]),
+            gradient: LinearGradient(colors: [Color(0xFF1A2151), Color(0xFF2A3477)]),
           ),
         ),
       ),
@@ -159,7 +159,7 @@ class _JourneySuggestionsScreenState extends State<JourneySuggestionsScreen> {
                     padding: const EdgeInsets.all(16),
                     constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.80),
                     decoration: BoxDecoration(
-                      color: msg.isUser ? const Color(0xFF1A237E) : Colors.white,
+                      color: msg.isUser ? const Color(0xFF1A2151) : Colors.white,
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(16),
                         topRight: const Radius.circular(16),
@@ -171,7 +171,7 @@ class _JourneySuggestionsScreenState extends State<JourneySuggestionsScreen> {
                     child: Text(
                       msg.content,
                       style: TextStyle(
-                        color: msg.isUser ? Colors.white : const Color(0xFF1A237E),
+                        color: msg.isUser ? Colors.white : const Color(0xFF1A2151),
                         height: 1.4, // Improves readability of long AI responses
                       ),
                     ),
@@ -191,7 +191,7 @@ class _JourneySuggestionsScreenState extends State<JourneySuggestionsScreen> {
                   const SizedBox(
                     width: 16, 
                     height: 16, 
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF6D00))
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFF27121))
                   ),
                   const SizedBox(width: 12),
                   Text('SafariTravel AI is thinking...', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
@@ -220,7 +220,7 @@ class _JourneySuggestionsScreenState extends State<JourneySuggestionsScreen> {
                 ),
                 const SizedBox(width: 8),
                 CircleAvatar(
-                  backgroundColor: _isLoading ? Colors.grey : const Color(0xFFFF6D00),
+                  backgroundColor: _isLoading ? Colors.grey : const Color(0xFFF27121),
                   child: IconButton(
                     icon: const Icon(Icons.send, color: Colors.white),
                     onPressed: _isLoading ? null : _sendMessage,
